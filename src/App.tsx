@@ -30,6 +30,7 @@ function App() {
   const [uploading, setUploading] = useState(false);
 
   const [jobTitle, setJobTitle] = useState("");
+  const [editingJobId, setEditingJobId] = useState<string | null>(null);
   const [jobLocation, setJobLocation] = useState("");
   const [assignedWorker, setAssignedWorker] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -39,6 +40,8 @@ function App() {
 
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [invoiceDueDate, setInvoiceDueDate] = useState("");
+  const [jobDate, setJobDate] = useState("");
+  const [jobTime, setJobTime] = useState("");
   const [laborAmount, setLaborAmount] = useState("");
   const [materialsAmount, setMaterialsAmount] = useState("");
   const [taxAmount, setTaxAmount] = useState("");
@@ -56,6 +59,8 @@ function App() {
   const [workers, setWorkers] = useState<any[]>([]);
   const [timeLogs, setTimeLogs] = useState<any[]>([]);
   const [allJobs, setAllJobs] = useState<any[]>([]);
+
+
 
   const isAdmin = user?.email === "taofikbusari@gmail.com";
 
@@ -122,6 +127,9 @@ function App() {
       fontWeight: "bold",
       marginTop: "10px",
       marginRight: "8px",
+      position: "relative",
+      zIndex: 10,
+      pointerEvents: "auto",
     },
     orangeButton: {
       background: "#ea580c",
@@ -133,6 +141,9 @@ function App() {
       fontWeight: "bold",
       marginTop: "10px",
       marginRight: "8px",
+      position: "relative",
+      zIndex: 10,
+      pointerEvents: "auto",
     },
     dangerButton: {
       background: "#dc2626",
@@ -143,6 +154,9 @@ function App() {
       cursor: "pointer",
       fontWeight: "bold",
       marginTop: "10px",
+      position: "relative",
+      zIndex: 10,
+      pointerEvents: "auto",
     },
     sectionTitle: {
       marginTop: 0,
@@ -231,7 +245,16 @@ const loadWorkerLocations = async () => {
 const loadPayroll = async () => {
   const { data, error } = await supabase
     .from("nge_time_logs")
-    .select("worker_name, clock_in, clock_out, total_hours")
+    .select(`
+      worker_name,
+      worker_id,
+      clock_in,
+      clock_out,
+      total_hours,
+      nge_workers (
+        hourly_rate
+      )
+    `)
     .not("clock_out", "is", null)
     .order("clock_out", { ascending: false });
 
@@ -425,12 +448,46 @@ const loadAllJobs = async () => {
       Number(laborAmount || 0) +
       Number(materialsAmount || 0) +
       Number(taxAmount || 0);
+if (editingJobId) {
+  const { error } = await supabase
+    .from("nge_jobs")
+    .update({
+      title: jobTitle,
+      location: jobLocation,
+      assigned_to: assignedWorker,
+      customer_name: customerName,
+      customer_phone: customerPhone,
+      customer_email: customerEmail,
+      job_address: jobAddress,
+      job_notes: jobNotes,
+      invoice_number: invoiceNumber,
+      invoice_due_date: invoiceDueDate || null,
+      labor_amount: Number(laborAmount || 0),
+      materials_amount: Number(materialsAmount || 0),
+      tax_amount: Number(taxAmount || 0),
+      total_amount: totalAmount,
+      scheduled_date: jobDate || null,
+      scheduled_time: jobTime || null,
+    })
+    .eq("id", editingJobId);
 
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  alert("Job updated");
+  setEditingJobId(null);
+  await loadAllJobs();
+  return;
+}
     const { error } = await supabase.from("nge_jobs").insert([
       {
         title: jobTitle,
         location: jobLocation,
         assigned_to: assignedWorker,
+        scheduled_date: jobDate || null,
+        scheduled_time: jobTime || null,
         customer_name: customerName,
         customer_phone: customerPhone,
         customer_email: customerEmail,
@@ -520,32 +577,31 @@ const exportInvoicePDF = (job: any) => {
 
   doc.save(`invoice-${job.invoice_number || job.customer_name || "nge"}.pdf`);
 };
-  const handleCompleteJob = async () => {
-    if (!currentJob) return;
+const handleCompleteJob = async () => {
+  if (!currentJob || !user) return;
 
-    const { error } = await supabase
-      .from("nge_jobs").update({
-                         status: "completed",
-                         completed_at: new Date().toISOString(),
-                       })
+  const completedJobId = currentJob.id;
 
-      .eq("id", currentJob.id);
+  const { error } = await supabase
+    .from("nge_jobs")
+    .update({
+      status: "completed",
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", completedJobId);
 
-if (error) {
-  alert(error.message);
-  return;
-}
+  if (error) {
+    alert(error.message);
+    return;
+  }
 
-setCurrentJob(null);
+  setCurrentJob(null);
 
-if (user) {
+  await loadAllJobs();
   await loadCurrentJob(user.id);
-}
 
-await loadAllJobs();
-
-alert("Job completed");
-  };
+  alert("Job completed");
+};
 
   const uploadPhoto = async (
     event: ChangeEvent<HTMLInputElement>,
@@ -642,6 +698,46 @@ const handleAddEmployee = async () => {
   setEmployeeRole("worker");
 
   await loadWorkers();
+};
+const exportPayrollPDF = () => {
+  const doc = new jsPDF();
+
+  doc.setFontSize(20);
+  doc.text("Next Generation Eneraie", 20, 20);
+
+  doc.setFontSize(14);
+  doc.text("PAYROLL REPORT", 20, 32);
+
+  let y = 50;
+
+  Object.values(groupedPayroll).forEach((log: any) => {
+    const hours = Number(log.total_hours || 0);
+    const hourlyRate = Number(log.nge_workers?.hourly_rate || 25);
+
+    const regularHours = Math.min(hours, 40);
+    const overtimeHours = Math.max(hours - 40, 0);
+
+    const totalPay =
+      regularHours * hourlyRate +
+      overtimeHours * hourlyRate * 1.5;
+
+    doc.setFontSize(10);
+    doc.text(`Worker: ${log.worker_name}`, 20, y);
+    doc.text(`Hours: ${hours.toFixed(2)}`, 20, y + 7);
+    doc.text(`Regular: ${regularHours.toFixed(2)}`, 20, y + 14);
+    doc.text(`Overtime: ${overtimeHours.toFixed(2)}`, 20, y + 21);
+    doc.text(`Rate: $${hourlyRate}/hr`, 20, y + 28);
+    doc.text(`Total Pay: $${totalPay.toFixed(2)}`, 20, y + 35);
+
+    y += 50;
+
+    if (y > 260) {
+      doc.addPage();
+      y = 20;
+    }
+  });
+
+  doc.save("payroll-report.pdf");
 };
 
 const totalHours = timeLogs.reduce(
@@ -799,10 +895,10 @@ const groupedPayroll = timeLogs.reduce((acc: any, log: any) => {
               </button>
             </div>
 
-            <div style={styles.card}>
-              <h3>Create Job</h3>
+    <div style={styles.card}>
+      <h3>Create Job</h3>
 
-              <div style={styles.grid}>
+      <div style={styles.grid}>
         <input
           style={styles.input}
           list="job-title-list"
@@ -811,112 +907,67 @@ const groupedPayroll = timeLogs.reduce((acc: any, log: any) => {
           onChange={(e) => setJobTitle(e.target.value)}
         />
 
-        <datalist id="job-title-list">
-          {allJobs
-            .filter((job) => job.title)
-            .map((job) => (
-              <option key={job.id} value={job.title} />
-            ))}
-        </datalist>
-                <input
-                  style={styles.input}
-                  placeholder="Location"
-                  value={jobLocation}
-                  onChange={(e) => setJobLocation(e.target.value)}
-                />
-                <input
-                  style={styles.input}
-                  placeholder="Customer Name"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                />
-                <input
-                  style={styles.input}
-                  placeholder="Customer Phone"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                />
-                <input
-                  style={styles.input}
-                  placeholder="Customer Email"
-                  value={customerEmail}
-                  onChange={(e) => setCustomerEmail(e.target.value)}
-                />
-                <input
-                  style={styles.input}
-                  placeholder="Job Address"
-                  value={jobAddress}
-                  onChange={(e) => setJobAddress(e.target.value)}
-                />
-                <input
-                  style={styles.input}
-                  placeholder="Job Notes"
-                  value={jobNotes}
-                  onChange={(e) => setJobNotes(e.target.value)}
-                />
-                <input
-                  style={styles.input}
-                  placeholder="Invoice Number"
-                  value={invoiceNumber}
-                  onChange={(e) => setInvoiceNumber(e.target.value)}
-                />
-                <input
-                  style={styles.input}
-                  type="date"
-                  value={invoiceDueDate}
-                  onChange={(e) => setInvoiceDueDate(e.target.value)}
-                />
-                <input
-                  style={styles.input}
-                  placeholder="Labor Amount"
-                  value={laborAmount}
-                  onChange={(e) => setLaborAmount(e.target.value)}
-                />
-                <input
-                  style={styles.input}
-                  placeholder="Materials Amount"
-                  value={materialsAmount}
-                  onChange={(e) => setMaterialsAmount(e.target.value)}
-                />
-                <input
-                  style={styles.input}
-                  placeholder="Tax Amount"
-                  value={taxAmount}
-                  onChange={(e) => setTaxAmount(e.target.value)}
-                />
-              </div>
+<datalist id="job-title-list">
+  {[
+    ...new Set(
+      allJobs
+        .map((job) => job.title?.trim().toLowerCase())
+        .filter(Boolean)
+    ),
+  ].map((title) => (
+    <option
+      key={title}
+      value={title.charAt(0).toUpperCase() + title.slice(1)}
+    />
+  ))}
+</datalist>
 
-              <div
-                style={{
-                  marginTop: "20px",
-                  display: "flex",
-                  gap: "12px",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexWrap: "wrap",
-                }}
-              >
-                <select
-                  style={{ ...styles.input, maxWidth: "280px" }}
-                  value={assignedWorker}
-                  onChange={async (e) => {
-                    setAssignedWorker(e.target.value);
-                    await loadWorkerHistory(e.target.value);
-                  }}
-                >
-                  <option value="">Assign Worker</option>
-                  {workers.map((worker) => (
-                    <option key={worker.id} value={worker.id}>
-                      {worker.full_name || worker.email}
-                    </option>
-                  ))}
-                </select>
+        <input style={styles.input} placeholder="Location" value={jobLocation} onChange={(e) => setJobLocation(e.target.value)} />
+        <input style={styles.input} placeholder="Customer Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+        <input style={styles.input} placeholder="Customer Phone" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+        <input style={styles.input} placeholder="Customer Email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} />
+        <input style={styles.input} placeholder="Job Address" value={jobAddress} onChange={(e) => setJobAddress(e.target.value)} />
+        <input style={styles.input} placeholder="Job Notes" value={jobNotes} onChange={(e) => setJobNotes(e.target.value)} />
+        <input style={styles.input} placeholder="Invoice Number" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} />
+        <input style={styles.input} type="date" value={invoiceDueDate} onChange={(e) => setInvoiceDueDate(e.target.value)} />
+        <input style={styles.input} placeholder="Labor Amount" value={laborAmount} onChange={(e) => setLaborAmount(e.target.value)} />
+        <input style={styles.input} placeholder="Materials Amount" value={materialsAmount} onChange={(e) => setMaterialsAmount(e.target.value)} />
+        <input style={styles.input} placeholder="Tax Amount" value={taxAmount} onChange={(e) => setTaxAmount(e.target.value)} />
+        <input style={styles.input} type="date" value={jobDate} onChange={(e) => setJobDate(e.target.value)} />
+        <input style={styles.input} type="time" value={jobTime} onChange={(e) => setJobTime(e.target.value)} />
+      </div>
 
-                <button style={styles.greenButton} onClick={handleCreateJob}>
-                  Create Job
-                </button>
-              </div>
-            </div>
+      <div
+        style={{
+          marginTop: "20px",
+          display: "flex",
+          gap: "12px",
+          alignItems: "center",
+          justifyContent: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <select
+          style={{ ...styles.input, maxWidth: "280px" }}
+          value={assignedWorker}
+          onChange={async (e) => {
+            setAssignedWorker(e.target.value);
+            await loadWorkerHistory(e.target.value);
+          }}
+        >
+          <option value="">Assign Worker</option>
+          {workers.map((worker) => (
+            <option key={worker.id} value={worker.id}>
+              {worker.full_name || worker.email}
+            </option>
+          ))}
+        </select>
+
+        <button style={styles.greenButton} onClick={handleCreateJob}>
+          Create Job
+        </button>
+      </div>
+    </div>
 
             {assignedWorker && (
               <div style={styles.card}>
@@ -1020,64 +1071,121 @@ const groupedPayroll = timeLogs.reduce((acc: any, log: any) => {
               )}
             </div>
 
-            <div style={styles.card}>
-              <h2>Job Review Board</h2>
-              <button style={styles.button} onClick={loadAllJobs}>
-                Refresh Jobs
-              </button>
+<div style={styles.card}>
+  <h2>Job Review Board</h2>
 
-              {allJobs.length === 0 ? (
-                <p>No jobs yet.</p>
-              ) : (
-                allJobs.map((job) => (
-                  <div
-                    key={job.id}
-                    style={{
-                      borderBottom: "1px solid #eee",
-                      padding: "12px 0",
-                    }}
-                  >
-                    <p>
-                      <strong>Job:</strong> {job.title}
-                    </p>
-                    <p>
-                      <strong>Status:</strong> {job.status}
-                    </p>
-                    <p>
-                      <strong>Customer:</strong> {job.customer_name}
-                    </p>
-                    <p>
-                      <strong>Total:</strong> $
-                      {Number(job.total_amount || 0).toFixed(2)}
-                    </p>
+  <button style={styles.button} onClick={loadAllJobs}>
+    Refresh Jobs
+  </button>
 
-                    <button
-                      style={styles.greenButton}
-                      onClick={() => exportInvoicePDF(job)}
-                    >
-                      Export Invoice PDF
-                    </button>
+  {allJobs.length === 0 ? (
+    <p>No jobs yet.</p>
+  ) : (
+    allJobs.map((job) => (
+      <div
+        key={job.id}
+        style={{
+          borderBottom: "1px solid #eee",
+          padding: "12px 0",
+        }}
+      >
+        <p>
+          <strong>Job:</strong> {job.title}
+        </p>
 
-                    {job.before_photo && (
-                      <div style={{ marginTop: "10px" }}>
-                        <img src={job.before_photo} alt="Before" width="120" />
-                      </div>
-                    )}
+        <p>
+          <strong>Status:</strong> {job.status}
+        </p>
 
-                    {job.after_photo && (
-                      <div style={{ marginTop: "10px" }}>
-                        <img src={job.after_photo} alt="After" width="120" />
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
+        <p>
+          <strong>Customer:</strong> {job.customer_name}
+        </p>
 
+        <p>
+          <strong>Scheduled:</strong>{" "}
+          {job.scheduled_date || "No date"} {job.scheduled_time || ""}
+        </p>
+
+        <p>
+          <strong>Total:</strong> $
+          {Number(job.total_amount || 0).toFixed(2)}
+        </p>
+
+        <button
+          style={styles.greenButton}
+          onClick={() => exportInvoicePDF(job)}
+        >
+          Export Invoice PDF
+        </button>
+<button
+ style={{ ...styles.button, position: "relative", zIndex: 20 }}
+  onClick={() => {
+    setEditingJobId(job.id);
+    setJobTitle(job.title || "");
+    setJobLocation(job.location || "");
+    setCustomerName(job.customer_name || "");
+    setCustomerPhone(job.customer_phone || "");
+    setCustomerEmail(job.customer_email || "");
+    setJobAddress(job.job_address || "");
+    setJobNotes(job.job_notes || "");
+    setInvoiceNumber(job.invoice_number || "");
+    setInvoiceDueDate(job.invoice_due_date || "");
+    setLaborAmount(job.labor_amount || "");
+    setMaterialsAmount(job.materials_amount || "");
+    setTaxAmount(job.tax_amount || "");
+    setJobDate(job.scheduled_date || "");
+    setJobTime(job.scheduled_time || "");
+    setAssignedWorker(job.assigned_to || "");
+  }}
+>
+  Edit Job
+</button>
+        <button
+          style={styles.dangerButton}
+          onClick={async () => {
+            const confirmDelete = window.confirm("Delete this job?");
+            if (!confirmDelete) return;
+
+            const { error } = await supabase
+              .from("nge_jobs")
+              .delete()
+              .eq("id", job.id);
+
+            if (error) {
+              alert(error.message);
+              return;
+            }
+
+            alert("Job deleted");
+            await loadAllJobs();
+          }}
+        >
+          Delete Job
+        </button>
+
+
+        {job.before_photo && (
+          <div style={{ marginTop: "10px" }}>
+            <img src={job.before_photo} alt="Before" width="120" />
+          </div>
+        )}
+
+        {job.after_photo && (
+          <div style={{ marginTop: "10px" }}>
+            <img src={job.after_photo} alt="After" width="120" />
+          </div>
+        )}
+      </div>
+    ))
+  )}
+</div>
             <div style={styles.card}>
               <h2>Payroll Timesheet</h2>
               <button style={styles.button} onClick={loadPayroll}>
                 Load Payroll
+              </button>
+              <button style={styles.greenButton} onClick={exportPayrollPDF}>
+                Export Payroll PDF
               </button>
 
               <h3>Payroll Summary</h3>
@@ -1096,8 +1204,13 @@ const groupedPayroll = timeLogs.reduce((acc: any, log: any) => {
               ) : (
                 Object.values(groupedPayroll).map((log: any, index) => {
                   const hours = Number(log.total_hours || 0);
-                  const hourlyRate = 25;
-                  const totalPay = hours * hourlyRate;
+           const hourlyRate = Number(log.nge_workers?.hourly_rate || 25);
+               const regularHours = Math.min(hours, 40);
+               const overtimeHours = Math.max(hours - 40, 0);
+
+               const totalPay =
+                 regularHours * hourlyRate +
+                 overtimeHours * hourlyRate * 1.5;
 
                   return (
                     <div
@@ -1112,6 +1225,13 @@ const groupedPayroll = timeLogs.reduce((acc: any, log: any) => {
                       </p>
                       <p>
                         <strong>Hours:</strong> {hours.toFixed(2)}
+                      </p>
+                      <p>
+                        <strong>Regular:</strong> {regularHours.toFixed(2)}
+                      </p>
+
+                      <p>
+                        <strong>Overtime:</strong> {overtimeHours.toFixed(2)}
                       </p>
                       <p>
                         <strong>Rate:</strong> ${hourlyRate}/hr
@@ -1155,6 +1275,9 @@ const groupedPayroll = timeLogs.reduce((acc: any, log: any) => {
                  <strong>Location:</strong> {currentJob.location}
                </p>
                <p>
+                 <strong>Scheduled:</strong> {currentJob.scheduled_date} at {currentJob.scheduled_time}
+               </p>
+               <p>
                  <strong>Status:</strong> {currentJob.status}
                </p>
 
@@ -1180,17 +1303,17 @@ const groupedPayroll = timeLogs.reduce((acc: any, log: any) => {
          </>
        )}
 
-
-               {uploading && <p>Uploading...</p>}
-             </>
-           ) : (
-             <p>No assigned job yet.</p>
-           )}
-         </div>
-       </>
-     )}
+       {uploading && <p>Uploading...</p>}
+     </>
+   ) : (
+     <p>No assigned job yet.</p>
+   )}
  </div>
- </div>
- );
+</>
+)}
+</div>
+</div>
+);
 }
+
 export default App;
