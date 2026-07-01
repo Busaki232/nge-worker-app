@@ -52,6 +52,7 @@ function App() {
   const [employeePhone, setEmployeePhone] = useState("");
   const [employeeRate, setEmployeeRate] = useState("");
   const [employeeRole, setEmployeeRole] = useState("worker");
+  const [newJobNotice, setNewJobNotice] = useState("");
 
   const [showSplash, setShowSplash] = useState(true);
   const [workerLocations, setWorkerLocations] = useState<WorkerLocation[]>([]);
@@ -59,6 +60,7 @@ function App() {
   const [workers, setWorkers] = useState<any[]>([]);
   const [timeLogs, setTimeLogs] = useState<any[]>([]);
   const [allJobs, setAllJobs] = useState<any[]>([]);
+
 
 
 
@@ -322,6 +324,54 @@ const loadAllJobs = async () => {
     return () => clearTimeout(timer);
   }, []);
 
+useEffect(() => {
+  const channel = supabase
+    .channel("jobs-live")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "nge_jobs",
+      },
+      async () => {
+        await loadAllJobs();
+        await loadCurrentJob(user?.id);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [user]);
+
+useEffect(() => {
+  if (!user || isAdmin) return;
+
+  const channel = supabase
+    .channel("worker-job-notifications")
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "nge_jobs",
+        filter: `assigned_to=eq.${user.id}`,
+      },
+      async (payload) => {
+        const job: any = payload.new;
+
+        setNewJobNotice(`New job assigned: ${job.title}`);
+        await loadCurrentJob(user.id);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [user, isAdmin]);
   const handleSignUp = async () => {
     const { data, error } = await supabase.auth.signUp({ email, password });
 
@@ -342,22 +392,23 @@ const loadAllJobs = async () => {
     await loadWorkers();
   };
 
-  const handleLogin = async () => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+const handleLogin = async () => {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
 
-    if (error) return alert(error.message);
+  if (error) return alert(error.message);
 
-    if (data.user) {
-      setUser(data.user);
-      await loadCurrentJob(data.user.id);
-      await loadWorkers();
-      await loadWorkerLocations();
-      await loadAllJobs();
-    }
-  };
+  if (data.user) {
+    setUser(data.user);
+    await loadCurrentJob(data.user.id);
+    await loadWorkers();
+    await loadWorkerLocations();
+    await loadAllJobs();
+    await loadPayroll();
+  }
+};
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -577,6 +628,7 @@ const exportInvoicePDF = (job: any) => {
 
   doc.save(`invoice-${job.invoice_number || job.customer_name || "nge"}.pdf`);
 };
+
 const handleCompleteJob = async () => {
   if (!currentJob || !user) return;
 
@@ -853,6 +905,18 @@ const groupedPayroll = timeLogs.reduce((acc: any, log: any) => {
           <>
             <div style={styles.card}>
               <h2 style={styles.sectionTitle}>Admin Dashboard</h2>
+              <div
+                style={{
+                  background: "#fef3c7",
+                  border: "1px solid #f59e0b",
+                  padding: "12px",
+                  borderRadius: "8px",
+                  marginBottom: "15px",
+                  fontWeight: "bold",
+                }}
+              >
+                Pending Jobs: {allJobs.filter((job) => job.status === "pending").length}
+              </div>
               <h3>Add Employee</h3>
 
               <div style={styles.grid}>
@@ -929,11 +993,34 @@ const groupedPayroll = timeLogs.reduce((acc: any, log: any) => {
         <input style={styles.input} placeholder="Job Address" value={jobAddress} onChange={(e) => setJobAddress(e.target.value)} />
         <input style={styles.input} placeholder="Job Notes" value={jobNotes} onChange={(e) => setJobNotes(e.target.value)} />
         <input style={styles.input} placeholder="Invoice Number" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} />
-        <input style={styles.input} type="date" value={invoiceDueDate} onChange={(e) => setInvoiceDueDate(e.target.value)} />
+<div>
+  <label style={{ fontWeight: "bold", fontSize: "13px" }}>
+    Invoice Due Date
+  </label>
+  <input
+    style={styles.input}
+    type="date"
+    value={invoiceDueDate}
+    onChange={(e) => setInvoiceDueDate(e.target.value)}
+  />
+</div>
+
+<div>
+  <label style={{ fontWeight: "bold", fontSize: "13px" }}>
+    Scheduled Job Date
+  </label>
+  <input
+    style={styles.input}
+    type="date"
+    value={jobDate}
+    onChange={(e) => setJobDate(e.target.value)}
+  />
+</div>
+
         <input style={styles.input} placeholder="Labor Amount" value={laborAmount} onChange={(e) => setLaborAmount(e.target.value)} />
         <input style={styles.input} placeholder="Materials Amount" value={materialsAmount} onChange={(e) => setMaterialsAmount(e.target.value)} />
         <input style={styles.input} placeholder="Tax Amount" value={taxAmount} onChange={(e) => setTaxAmount(e.target.value)} />
-        <input style={styles.input} type="date" value={jobDate} onChange={(e) => setJobDate(e.target.value)} />
+
         <input style={styles.input} type="time" value={jobTime} onChange={(e) => setJobTime(e.target.value)} />
       </div>
 
@@ -1014,6 +1101,20 @@ const groupedPayroll = timeLogs.reduce((acc: any, log: any) => {
              </span>
            </p>
 
+{job.status === "completed" && (
+  <div
+    style={{
+      background: "#dcfce7",
+      border: "1px solid green",
+      padding: "10px",
+      borderRadius: "8px",
+      marginTop: "10px",
+      fontWeight: "bold",
+    }}
+  >
+    Job completed by worker
+  </div>
+)}
              <p>
                <strong>Total:</strong> ${job.total_amount}
              </p>
@@ -1117,6 +1218,7 @@ const groupedPayroll = timeLogs.reduce((acc: any, log: any) => {
         >
           Export Invoice PDF
         </button>
+
 <button
  style={{ ...styles.button, position: "relative", zIndex: 20 }}
   onClick={() => {
@@ -1179,6 +1281,79 @@ const groupedPayroll = timeLogs.reduce((acc: any, log: any) => {
     ))
   )}
 </div>
+
+
+<div style={styles.card}>
+  <h2>Recently Completed Jobs</h2>
+
+  {allJobs.filter((job) => job.status === "completed").length === 0 ? (
+    <p>No completed jobs yet.</p>
+  ) : (
+    allJobs
+      .filter((job) => job.status === "completed")
+      .slice(0, 5)
+      .map((job) => (
+        <div
+          key={job.id}
+          style={{
+            borderBottom: "1px solid #eee",
+            padding: "12px 0",
+          }}
+        >
+          <p>
+            <strong>Job:</strong> {job.title}
+          </p>
+          <p>
+            <strong>Customer:</strong> {job.customer_name}
+          </p>
+          <p>
+            <strong>Completed At:</strong> {job.completed_at}
+          </p>
+        </div>
+      ))
+  )}
+</div><div style={styles.card}>
+        <h2>Worker Performance Analytics</h2>
+
+        {workers.map((worker) => {
+          const workerJobs = allJobs.filter(
+            (job) => job.assigned_to === worker.id
+          );
+
+          const completedJobs = workerJobs.filter(
+            (job) => job.status === "completed"
+          );
+
+          const pendingJobs = workerJobs.filter(
+            (job) => job.status !== "completed"
+          );
+
+          return (
+            <div
+              key={worker.id}
+              style={{
+                borderBottom: "1px solid #eee",
+                padding: "12px 0",
+              }}
+            >
+              <p>
+                <strong>Worker:</strong> {worker.full_name || worker.email}
+              </p>
+              <p>
+                <strong>Total Jobs:</strong> {workerJobs.length}
+              </p>
+              <p>
+                <strong>Completed:</strong> {completedJobs.length}
+              </p>
+              <p>
+                <strong>Pending:</strong> {pendingJobs.length}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+
             <div style={styles.card}>
               <h2>Payroll Timesheet</h2>
               <button style={styles.button} onClick={loadPayroll}>
@@ -1246,74 +1421,87 @@ const groupedPayroll = timeLogs.reduce((acc: any, log: any) => {
             </div>
           </>
         )}
+{!isAdmin && (
+  <>
+    <div style={styles.card}>
+      <h2>Time Tracking</h2>
 
-     {!isAdmin && (
-       <>
-         <div style={styles.card}>
-           <h2>Time Tracking</h2>
+      <button style={styles.greenButton} onClick={handleClockIn}>
+        Clock In
+      </button>
 
-           <button style={styles.greenButton} onClick={handleClockIn}>
-             Clock In
-           </button>
+      <button style={styles.orangeButton} onClick={handleClockOut}>
+        Clock Out
+      </button>
 
-           <button style={styles.orangeButton} onClick={handleClockOut}>
-             Clock Out
-           </button>
+      <p>{clockedIn ? "Status: Clocked In" : "Status: Not Clocked In"}</p>
+    </div>
 
-           <p>{clockedIn ? "Status: Clocked In" : "Status: Not Clocked In"}</p>
-         </div>
+    {newJobNotice && (
+      <div style={styles.card}>
+        <h2>New Assignment</h2>
+        <p>{newJobNotice}</p>
+        <button style={styles.greenButton} onClick={() => setNewJobNotice("")}>
+          Dismiss
+        </button>
+      </div>
+    )}
 
-         <div style={styles.card}>
-           <h2>Current Job</h2>
+    <div style={styles.card}>
+      <h2>Current Job</h2>
 
-           {currentJob ? (
-             <>
-               <p>
-                 <strong>Job:</strong> {currentJob.title}
-               </p>
-               <p>
-                 <strong>Location:</strong> {currentJob.location}
-               </p>
-               <p>
-                 <strong>Scheduled:</strong> {currentJob.scheduled_date} at {currentJob.scheduled_time}
-               </p>
-               <p>
-                 <strong>Status:</strong> {currentJob.status}
-               </p>
+      {currentJob && currentJob.status === "pending" && (
+        <div
+          style={{
+            background: "#fef3c7",
+            border: "1px solid #f59e0b",
+            padding: "12px",
+            borderRadius: "8px",
+            marginBottom: "15px",
+            fontWeight: "bold",
+          }}
+        >
+          New job assigned. Please review and start the job.
+        </div>
+      )}
 
+      {currentJob ? (
+        <>
+          <p><strong>Job:</strong> {currentJob.title}</p>
+          <p><strong>Location:</strong> {currentJob.location}</p>
+          <p><strong>Scheduled:</strong> {currentJob.scheduled_date} at {currentJob.scheduled_time}</p>
+          <p><strong>Status:</strong> {currentJob.status}</p>
 
+          {currentJob.status === "pending" && (
+            <button style={styles.button} onClick={handleStartJob}>
+              Start Job
+            </button>
+          )}
 
-       {currentJob.status === "pending" && (
-         <button style={styles.button} onClick={handleStartJob}>
-           Start Job
-         </button>
-       )}
+          {currentJob.status === "in_progress" && (
+            <>
+              <button style={styles.greenButton} onClick={handleCompleteJob}>
+                Mark Complete
+              </button>
 
-       {currentJob.status === "in_progress" && (
-         <>
-           <button style={styles.greenButton} onClick={handleCompleteJob}>
-             Mark Complete
-           </button>
+              <h3>Before Work</h3>
+              <input type="file" onChange={(e) => uploadPhoto(e, "before")} />
 
-           <h3>Before Work</h3>
-           <input type="file" onChange={(e) => uploadPhoto(e, "before")} />
+              <h3>After Work</h3>
+              <input type="file" onChange={(e) => uploadPhoto(e, "after")} />
+            </>
+          )}
 
-           <h3>After Work</h3>
-           <input type="file" onChange={(e) => uploadPhoto(e, "after")} />
-         </>
-       )}
+          {uploading && <p>Uploading...</p>}
+        </>
+      ) : (
+        <p>No assigned job yet.</p>
+      )}
+    </div>
+  </>
+)}      </div>
+      </div>
+    );
+  }
 
-       {uploading && <p>Uploading...</p>}
-     </>
-   ) : (
-     <p>No assigned job yet.</p>
-   )}
- </div>
-</>
-)}
-</div>
-</div>
-);
-}
-
-export default App;
+  export default App;
