@@ -4,6 +4,12 @@ import { supabase } from "./lib/supabase";
 import type { User } from "@supabase/supabase-js";
 import jsPDF from "jspdf";
 
+type Job = {
+  id: string;
+  title: string;
+  location: string;
+  status: string;
+};
 
 type WorkerLocation = {
   worker_name: string;
@@ -13,29 +19,6 @@ type WorkerLocation = {
   status: string;
 };
 
-type Job = {
-  id: string;
-  title: string;
-  location: string;
-  status: string;
-  assigned_to?: string | null;
-  customer_name?: string | null;
-  customer_phone?: string | null;
-  customer_email?: string | null;
-  job_address?: string | null;
-  job_notes?: string | null;
-  invoice_number?: string | null;
-  invoice_due_date?: string | null;
-  labor_amount?: number;
-  materials_amount?: number;
-  tax_amount?: number;
-  total_amount?: number;
-  scheduled_date?: string | null;
-  scheduled_time?: string | null;
-  before_photo?: string | null;
-  after_photo?: string | null;
-  completed_at?: string | null;
-};
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [fullName, setFullName] = useState("");
@@ -1512,15 +1495,15 @@ const groupedPayroll = timeLogs.reduce((acc: any, log: any) => {
             <span
               style={{
                 color:
-                  currentJob.status === "completed"
+                  job.status === "completed"
                     ? "green"
-                    : currentJob.status === "in_progress"
+                    : job.status === "in_progress"
                     ? "blue"
                     : "orange",
                 fontWeight: "bold",
               }}
             >
-              {currentJob.status}
+              {job.status}
             </span>
           </p>
 
