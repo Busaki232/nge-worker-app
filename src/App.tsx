@@ -282,6 +282,7 @@ const loadAllJobs = async () => {
   setAllJobs(data || []);
   console.log("Jobs refreshed");
 };
+
   useEffect(() => {
     const setupAuth = async () => {
       const { data } = await supabase.auth.getUser();
@@ -336,7 +337,10 @@ useEffect(() => {
       },
       async () => {
         await loadAllJobs();
-        await loadCurrentJob(user?.id);
+
+        if (user?.id) {
+          await loadCurrentJob(user.id);
+        }
       }
     )
     .subscribe();
