@@ -5,6 +5,7 @@ import type { User } from "@supabase/supabase-js";
 import jsPDF from "jspdf";
 
 
+
 type WorkerLocation = {
   worker_name: string;
   latitude: number | null;
@@ -835,68 +836,97 @@ const totalHours = timeLogs.reduce(
           padding: "20px",
         }}
       >
-        <img
-          src="/logo.png"
-          alt="NGE"
-          style={{ width: "180px", marginBottom: "25px" }}
-        />
-        <h1>Welcome to Next Generation Eneraie</h1>
+<img
+  src="/logo.png"
+  alt="NGE"
+  style={{ width: "85px", marginBottom: "15px" }}
+/>
+   <h1
+     style={{
+       fontSize: "24px",
+       fontWeight: "700",
+       lineHeight: "1.25",
+       textAlign: "center",
+       maxWidth: "300px",
+       margin: "0 auto",
+     }}
+   >
+     Welcome to <br />
+     Next Generation Eneraie
+   </h1>
       </div>
     );
   }
+if (!user) {
+  return (
+    <div style={styles.page}>
+      <div style={{ ...styles.container, maxWidth: "480px" }}>
+        <div style={styles.header}>
+          <img
+            src="/logo"
+            alt="NGE"
+            style={{ width: "110px", marginBottom: "15px" }}
+          />
 
-  if (!user) {
-    return (
-      <div style={styles.page}>
-        <div style={{ ...styles.container, maxWidth: "480px" }}>
-          <div style={styles.header}>
-            <img
-              src="/logo.png"
-              alt="NGE"
-              style={{ width: "110px", marginBottom: "15px" }}
-            />
-            <h1>NGE Worker Portal</h1>
-            <p>Login or create a worker account</p>
-          </div>
+<h1
+  style={{
+    fontSize: "22px",
+    fontWeight: "700",
+    lineHeight: "1.1",
+    marginBottom: "8px",
+    textAlign: "center",
+    maxWidth: "280px",
+    margin: "0 auto 8px auto",
+  }}
+>
+  NGE Worker Portal
+</h1>
 
-          <div style={styles.card}>
-            <input
-              style={styles.input}
-              placeholder="Full name"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-            />
-            <br />
-            <br />
+          <p style={{ fontSize: "14px" }}>
+            Login or create a worker account
+          </p>
+        </div>
 
-            <input
-              style={styles.input}
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-            <br />
-            <br />
+        <div style={styles.card}>
+          <input
+            style={styles.input}
+            placeholder="Full name"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+          />
+          <br />
+          <br />
 
-            <input
-              style={styles.input}
-              placeholder="Password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+          <input
+            style={styles.input}
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <br />
+          <br />
 
-            <button style={styles.button} onClick={handleLogin}>
-              Login
-            </button>
-            <button style={styles.greenButton} onClick={handleSignUp}>
-              Create Account
-            </button>
-          </div>
+          <input
+            style={styles.input}
+            placeholder="Password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+
+          <button style={styles.button} onClick={handleLogin}>
+            Login
+          </button>
+
+          <button style={styles.greenButton} onClick={handleSignUp}>
+            Create Account
+          </button>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
+
 const groupedPayroll = timeLogs.reduce((acc: any, log: any) => {
   const worker = log.worker_name || "Unknown";
   const hours = Math.max(Number(log.total_hours || 0), 0);
