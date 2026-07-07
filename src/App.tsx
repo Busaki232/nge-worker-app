@@ -14,6 +14,14 @@ type WorkerLocation = {
   status: string;
 };
 
+type Worker = {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  position?: string;
+};
+
 type Job = {
   id: string;
   title: string;
@@ -72,26 +80,46 @@ function App() {
   const [employeeRate, setEmployeeRate] = useState("");
   const [employeeRole, setEmployeeRole] = useState("worker");
   const [newJobNotice, setNewJobNotice] = useState("");
+  const [position] = useState("");
 
   const [showSplash, setShowSplash] = useState(true);
   const [workerLocations, setWorkerLocations] = useState<WorkerLocation[]>([]);
   const [selectedWorkerHistory, setSelectedWorkerHistory] = useState<any[]>([]);
-  const [workers, setWorkers] = useState<any[]>([]);
+const [workers, setWorkers] = useState<Worker[]>([]);
   const [timeLogs, setTimeLogs] = useState<any[]>([]);
   const [allJobs, setAllJobs] = useState<any[]>([]);
 
 
 
+const loggedInEmail = user?.email?.toLowerCase();
 
-  const isAdmin = user?.email === "taofikbusari@gmail.com";
+const adminEmails = [
+  "info@nextgenerationeneraie.org",
+  "curline@nextgenerationeneraie.org",
+];
 
-  const styles: Record<string, CSSProperties> = {
-    page: {
-      minHeight: "100vh",
-      background: "#f3f4f6",
-      padding: "30px",
-      fontFamily: "Arial, sans-serif",
-    },
+const currentWorker = workers.find(
+  (worker) => worker.email?.toLowerCase() === loggedInEmail
+);
+
+const isAdmin =
+  currentWorker?.role === "admin" ||
+  adminEmails.includes(loggedInEmail || "");
+
+const isWorker = !!user && !isAdmin;
+
+console.log("CURRENT WORKER:", currentWorker);
+console.log("IS ADMIN:", isAdmin);
+console.log("IS WORKER:", isWorker);
+
+const styles: Record<string, CSSProperties> = {
+  page: {
+    minHeight: "100vh",
+    background: "#f3f4f6",
+    padding: "30px",
+    fontFamily: "Arial, sans-serif",
+  },
+
     container: {
       maxWidth: "1100px",
       margin: "0 auto",
@@ -397,6 +425,15 @@ useEffect(() => {
 }, [user, isAdmin]);
   const handleSignUp = async () => {
     const { data, error } = await supabase.auth.signUp({ email, password });
+    const adminEmails = [
+           "info@nextgenerationeneraie.org",
+            "curline@nextgenerationeneraie.org",
+    ];
+
+    if (adminEmails.includes(email) && position.trim() === "") {
+           alert("Please enter your position.");
+            return;
+    }
 
     if (error) return alert(error.message);
 
@@ -406,7 +443,13 @@ useEffect(() => {
           id: data.user.id,
           full_name: fullName,
           email,
-          role: "worker",
+role:
+        email === "info@nextgenerationeneraie.org" ||
+        email === "curline@nextgenerationeneraie.org"
+                ? "admin"
+                 : "worker",
+
+position,
         },
       ]);
     }
@@ -440,6 +483,11 @@ const handleLogin = async () => {
   };
 
   const handleClockIn = async () => {
+
+if (!currentWorker || currentWorker.role !== "worker") {
+  alert("Only workers can clock in.");
+  return;
+}
     if (!user) return;
 
     navigator.geolocation.getCurrentPosition(
@@ -1488,7 +1536,8 @@ const groupedPayroll = timeLogs.reduce((acc: any, log: any) => {
             </div>
           </>
         )}
-{!isAdmin && (
+
+{isWorker && (
   <>
     <div style={styles.card}>
       <h2>Time Tracking</h2>
@@ -1517,42 +1566,12 @@ const groupedPayroll = timeLogs.reduce((acc: any, log: any) => {
     <div style={styles.card}>
       <h2>Current Job</h2>
 
-      {currentJob && currentJob.status === "pending" && (
-        <div
-          style={{
-            background: "#fef3c7",
-            border: "1px solid #f59e0b",
-            padding: "12px",
-            borderRadius: "8px",
-            marginBottom: "15px",
-            fontWeight: "bold",
-          }}
-        >
-          New job assigned. Please review and start the job.
-        </div>
-      )}
-
       {currentJob ? (
         <>
           <p><strong>Job:</strong> {currentJob.title}</p>
           <p><strong>Location:</strong> {currentJob.location}</p>
           <p><strong>Scheduled:</strong> {currentJob.scheduled_date} at {currentJob.scheduled_time}</p>
-          <p>
-            <strong>Status:</strong>{" "}
-            <span
-              style={{
-                color:
-                  currentJob.status === "completed"
-                    ? "green"
-                    : currentJob.status === "in_progress"
-                    ? "blue"
-                    : "orange",
-                fontWeight: "bold",
-              }}
-            >
-              {currentJob.status}
-            </span>
-          </p>
+          <p><strong>Status:</strong> {currentJob.status}</p>
 
           {currentJob.status === "pending" && (
             <button style={styles.button} onClick={handleStartJob}>
@@ -1581,9 +1600,10 @@ const groupedPayroll = timeLogs.reduce((acc: any, log: any) => {
       )}
     </div>
   </>
-)}      </div>
+)}
       </div>
-    );
-  }
+    </div>
+  );
+}
 
-  export default App;
+export default App;
