@@ -887,7 +887,7 @@ const totalHours = timeLogs.reduce(
 <img
   src="/logo.png"
   alt="NGE"
-  style={{ width: "85px", marginBottom: "15px" }}
+  style={{ width: "90px", marginBottom: "15px" }}
 />
    <h1
      style={{
